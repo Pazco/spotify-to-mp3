@@ -23,11 +23,12 @@ Automatically download any Spotify playlist as MP3 files using [exportify.app](h
 
 ## 📦 Supported systems
 
-| Distro | Package Manager |
-|--------|----------------|
-| Fedora, Bazzite, RHEL | `dnf` |
-| Ubuntu, Debian, Mint, Kali | `apt` |
-| Arch, CachyOS, Manjaro | `pacman` |
+| OS | Launcher | Package Manager |
+|----|----------|----------------|
+| Fedora, Bazzite, RHEL | `launch.sh` | `dnf` |
+| Ubuntu, Debian, Mint, Kali | `launch.sh` | `apt` |
+| Arch, CachyOS, Manjaro | `launch.sh` | `pacman` |
+| Windows 10 / 11 | `launch.bat` | `winget` |
 
 > **Note for Kali users:** Make sure your repositories are configured before running:
 > ```bash
@@ -66,11 +67,12 @@ Before running the script, open your browser (Firefox, Chrome, Brave...) and log
 
 ### 3. Run the script
 
-Double-click `launch.sh` and select **"Run in terminal"**, or from the terminal:
-
+**Linux:**
 ```bash
 ./launch.sh
 ```
+
+**Windows:** Double-click `launch.bat` — it will install all dependencies automatically and launch the bot.
 
 Navigate with arrow keys:
 
@@ -136,8 +138,9 @@ For most songs (~95%) the download will work fine.
 
 ```
 spotify-to-mp3/
-├── spotify-to-mp3.py   # Main script
-├── launch.sh           # Double-click launcher (installs dependencies automatically)
+├── spotify-to-mp3.py   # Main script (Linux & Windows)
+├── launch.sh           # Linux/Mac launcher
+├── launch.bat          # Windows launcher
 ├── .gitignore
 └── README.md
 ```
