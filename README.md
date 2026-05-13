@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/27660698/README.md)
 # 🎵 spotify-to-mp3
 
 Automatically download any Spotify playlist as MP3 files using [exportify.app](https://exportify.app) and [yt-dlp](https://github.com/yt-dlp/yt-dlp).
@@ -15,14 +14,14 @@ Automatically download any Spotify playlist as MP3 files using [exportify.app](h
 - ✅ Smart registry — only downloads new songs, never re-downloads
 - 🔍 Searches multiple sources: YouTube → YouTube (variants) → SoundCloud
 - 🎨 Embeds metadata and album artwork into every MP3
-- 💾 Interactive menu to configure paths without editing the code
-- 🍪 Browser cookie support to avoid YouTube blocks
+- 💾 Interactive arrow-key menu — no code editing needed
+- 🍪 Auto-detects your browser for cookies (avoids YouTube age restrictions and blocks)
+- 🗑️ Built-in duplicate file detector with multi-select deletion
+- 🔄 Auto-installs all dependencies on first run
 
 ---
 
-## 📦 Requirements
-
-The launcher installs all dependencies automatically. Supported distros:
+## 📦 Supported systems
 
 | Distro | Package Manager |
 |--------|----------------|
@@ -30,7 +29,7 @@ The launcher installs all dependencies automatically. Supported distros:
 | Ubuntu, Debian, Mint, Kali | `apt` |
 | Arch, CachyOS, Manjaro | `pacman` |
 
-> **Note:** Your system needs configured repositories. On a fresh Kali install, set them up first:
+> **Note for Kali users:** Make sure your repositories are configured before running:
 > ```bash
 > echo "deb http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | sudo tee /etc/apt/sources.list
 > sudo apt update
@@ -46,7 +45,7 @@ cd spotify-to-mp3
 chmod +x launch.sh
 ```
 
-No Python libraries to install — only uses the standard library.
+No Python libraries needed — only uses the standard library.
 
 ---
 
@@ -59,50 +58,77 @@ No Python libraries to install — only uses the standard library.
 3. Click **Export** next to any playlist (Liked Songs, your own playlists, or any public playlist)
 4. Save the CSV file as `songs.csv` in the project folder
 
-### 2. Run the script
+### 2. Open your browser at least once
 
-Double-click `launch.sh` and select **"Run in terminal"**, or run it from the terminal:
+Before running the script, open your browser (Firefox, Chrome, Brave...) and log in to **YouTube**. This allows the script to use your cookies to bypass age restrictions and bot detection.
+
+> You only need to do this once.
+
+### 3. Run the script
+
+Double-click `launch.sh` and select **"Run in terminal"**, or from the terminal:
 
 ```bash
 ./launch.sh
 ```
 
-You will see an interactive menu:
+Navigate with arrow keys:
 
 ```
-══════════════════════════════════════════════════════
-       Music Downloader
-══════════════════════════════════════════════════════
-
-  CSV     : songs.csv
-  Dest    : /home/user/music_downloaded
-
-  [1] Start download
-  [2] Change CSV path
-  [3] Change download folder
-  [4] Exit
+  > Start download
+    Change CSV path
+    Change download folder
+    Check for duplicates
+    Exit
 ```
 
-### 3. Update when you add new songs
+### 4. Update when you add new songs
 
 1. Export a new CSV from exportify.app
 2. Run the script again — **it will only download the new songs**
 
 ---
 
-## 🍪 Avoiding YouTube blocks
+## 🍪 Browser auto-detection
 
-If YouTube starts asking for verification, edit this line in `spotify-to-mp3.py`:
+The script automatically detects your installed browser for cookies in this order:
+
+**Brave → Firefox → Chrome → Chromium → Edge**
+
+To force a specific browser, edit this line in `spotify-to-mp3.py`:
 
 ```python
-COOKIES_BROWSER = "brave"   # brave | firefox | chrome | chromium | edge
+COOKIES_NAVEGADOR = "firefox"   # brave | firefox | chrome | chromium | edge
 ```
 
 Or use a manually exported cookies file:
 
 ```python
-COOKIES_BROWSER = "/path/to/cookies.txt"
+COOKIES_NAVEGADOR = "/path/to/cookies.txt"
 ```
+
+---
+
+## 🗑️ Duplicate checker
+
+The built-in duplicate checker (option 4 in the menu) scans your download folder and lets you:
+
+- **Select which duplicates to delete** using the arrow key + space selector
+- **Delete all duplicates at once**
+
+It detects duplicates by normalized filename (ignores case, spaces and special characters).
+
+---
+
+## ❌ When a song fails
+
+Some songs will fail and be saved to `_failures.txt`. This usually happens when:
+
+- The video has been **deleted** from YouTube
+- The video is **copyright blocked** in all countries
+- The video requires **age verification** and no browser cookies are available
+
+For most songs (~95%) the download will work fine.
 
 ---
 
@@ -111,17 +137,18 @@ COOKIES_BROWSER = "/path/to/cookies.txt"
 ```
 spotify-to-mp3/
 ├── spotify-to-mp3.py   # Main script
-├── launch.sh           # Double-click launcher
+├── launch.sh           # Double-click launcher (installs dependencies automatically)
 ├── .gitignore
 └── README.md
 ```
 
-Files generated when running (not uploaded to GitHub):
+Files generated at runtime (not uploaded to GitHub):
 ```
-├── songs.csv                   # Your exported Spotify CSV
-├── .registro.json              # Download history
-├── .descargador_config.json    # Your path configuration
-└── music_downloaded/           # Your MP3 files
+├── songs.csv                       # Your exported Spotify CSV
+├── .registro.json                  # Download history
+├── .descargador_config.json        # Your path configuration
+└── music_downloaded/               # Your MP3 files
+    └── _failures.txt               # Songs that could not be downloaded
 ```
 
 ---
