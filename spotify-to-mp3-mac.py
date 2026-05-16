@@ -10,7 +10,7 @@ import sys, os, csv, time, json, shutil, subprocess, re, urllib.parse
 # ═══════════════════════════════════════════════════════
 #  CONFIGURACION POR DEFECTO
 # ═══════════════════════════════════════════════════════
-CARPETA_SALIDA     = "music_downloaded"
+CARPETA_SALIDA     = os.path.join(os.path.expanduser("~"), "Music", "spotify-to-mp3")
 CSV_FILE           = "songs.csv"
 COOKIES_NAVEGADOR  = "auto"    # auto | brave | firefox | chrome | chromium | edge
 ESPERA_ENTRE_SONGS = 1
@@ -31,6 +31,32 @@ NEGRITA  = "\033[1m"
 def detect_browser():
     """Auto-detect which browser is installed and has cookies available."""
     import shutil
+    # On macOS, check both PATH and common app locations
+    mac_paths = {
+        "chrome":   [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        ],
+        "brave":    [
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+            os.path.expanduser("~/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"),
+        ],
+        "firefox":  [
+            "/Applications/Firefox.app/Contents/MacOS/firefox",
+            os.path.expanduser("~/Applications/Firefox.app/Contents/MacOS/firefox"),
+        ],
+        "chromium": [
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        ],
+        "edge":     [
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        ],
+    }
+    # Check app paths first
+    for name, paths in mac_paths.items():
+        if any(os.path.isfile(p) for p in paths):
+            return name
+    # Fallback to PATH
     candidates = [
         ("brave",    ["brave-browser", "brave"]),
         ("firefox",  ["firefox"]),
@@ -46,41 +72,35 @@ def detect_browser():
 def p(color, texto): print(f"{color}{texto}{RESET}")
 
 def browse_file(title="Select file"):
-    """Open file browser dialog on Linux using zenity or kdialog."""
-    import shutil
+    """Open file browser dialog using osascript (macOS native)."""
     try:
-        if shutil.which("zenity"):
-            result = subprocess.run(
-                ["zenity", "--file-selection", f"--title={title}", "--file-filter=CSV files | *.csv"],
-                capture_output=True, text=True
-            )
-            return result.stdout.strip() or None
-        elif shutil.which("kdialog"):
-            result = subprocess.run(
-                ["kdialog", "--getopenfilename", os.path.expanduser("~"), "*.csv", f"--title={title}"],
-                capture_output=True, text=True
-            )
-            return result.stdout.strip() or None
+        script = f'''
+        tell application "System Events"
+            set theFile to choose file with prompt "{title}" of type {{"csv", "CSV"}}
+            return POSIX path of theFile
+        end tell
+        '''
+        result = subprocess.run(["osascript", "-e", script],
+                                capture_output=True, text=True)
+        path = result.stdout.strip()
+        return path if path else None
     except Exception:
         pass
     return None
 
 def browse_folder(title="Select folder"):
-    """Open folder browser dialog on Linux using zenity or kdialog."""
-    import shutil
+    """Open folder browser dialog using osascript (macOS native)."""
     try:
-        if shutil.which("zenity"):
-            result = subprocess.run(
-                ["zenity", "--file-selection", "--directory", f"--title={title}"],
-                capture_output=True, text=True
-            )
-            return result.stdout.strip() or None
-        elif shutil.which("kdialog"):
-            result = subprocess.run(
-                ["kdialog", "--getexistingdirectory", os.path.expanduser("~"), f"--title={title}"],
-                capture_output=True, text=True
-            )
-            return result.stdout.strip() or None
+        script = f'''
+        tell application "System Events"
+            set theFolder to choose folder with prompt "{title}"
+            return POSIX path of theFolder
+        end tell
+        '''
+        result = subprocess.run(["osascript", "-e", script],
+                                capture_output=True, text=True)
+        path = result.stdout.strip()
+        return path if path else None
     except Exception:
         pass
     return None

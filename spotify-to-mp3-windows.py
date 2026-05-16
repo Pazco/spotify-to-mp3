@@ -10,7 +10,7 @@ import sys, os, csv, time, json, shutil, subprocess, re, urllib.parse
 # ═══════════════════════════════════════════════════════
 #  CONFIGURACION POR DEFECTO
 # ═══════════════════════════════════════════════════════
-CARPETA_SALIDA     = "music_downloaded"
+CARPETA_SALIDA     = os.path.join(os.path.expanduser("~"), "Music", "spotify-to-mp3") if os.name == "nt" else "music_downloaded"
 CSV_FILE           = "songs.csv"
 COOKIES_NAVEGADOR  = "auto"    # auto | brave | firefox | chrome | chromium | edge
 ESPERA_ENTRE_SONGS = 1
@@ -31,63 +31,71 @@ NEGRITA  = "\033[1m"
 def detect_browser():
     """Auto-detect which browser is installed and has cookies available."""
     import shutil
-    candidates = [
-        ("brave",    ["brave-browser", "brave"]),
-        ("firefox",  ["firefox"]),
-        ("chrome",   ["google-chrome", "google-chrome-stable", "chrome"]),
-        ("chromium", ["chromium-browser", "chromium"]),
-        ("edge",     ["microsoft-edge", "microsoft-edge-stable"]),
-    ]
-    for name, bins in candidates:
-        if any(shutil.which(b) for b in bins):
-            return name
-    return None
+    import os as _os
+    if _os.name == "nt":
+        # Windows: check common install paths
+        # On Windows, Firefox is prioritized because Chrome-based browsers
+        # use DPAPI encryption which yt-dlp cannot decrypt directly.
+        win_candidates = [
+            ("firefox",  [r"C:\Program Files\Mozilla Firefox\firefox.exe",
+                          r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe"]),
+            ("brave",    [r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe"]),
+            ("chrome",   [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                          r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"]),
+            ("chromium", [r"C:\Program Files\Chromium\Application\chrome.exe"]),
+            ("edge",     [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                          r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]),
+        ]
+        for name, paths in win_candidates:
+            if any(_os.path.isfile(p) for p in paths):
+                return name
+        return None
+    else:
+        candidates = [
+            ("brave",    ["brave-browser", "brave"]),
+            ("firefox",  ["firefox"]),
+            ("chrome",   ["google-chrome", "google-chrome-stable", "chrome"]),
+            ("chromium", ["chromium-browser", "chromium"]),
+            ("edge",     ["microsoft-edge", "microsoft-edge-stable"]),
+        ]
+        for name, bins in candidates:
+            if any(shutil.which(b) for b in bins):
+                return name
+        return None
 
 def p(color, texto): print(f"{color}{texto}{RESET}")
 
-def browse_file(title="Select file"):
-    """Open file browser dialog on Linux using zenity or kdialog."""
-    import shutil
+def browse_file(title="Select file", filetypes=(("CSV files", "*.csv"), ("All files", "*.*"))):
+    """Open Windows file browser to select a file."""
     try:
-        if shutil.which("zenity"):
-            result = subprocess.run(
-                ["zenity", "--file-selection", f"--title={title}", "--file-filter=CSV files | *.csv"],
-                capture_output=True, text=True
-            )
-            return result.stdout.strip() or None
-        elif shutil.which("kdialog"):
-            result = subprocess.run(
-                ["kdialog", "--getopenfilename", os.path.expanduser("~"), "*.csv", f"--title={title}"],
-                capture_output=True, text=True
-            )
-            return result.stdout.strip() or None
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.wm_attributes("-topmost", True)
+        path = filedialog.askopenfilename(title=title, filetypes=filetypes)
+        root.destroy()
+        return path if path else None
     except Exception:
-        pass
-    return None
+        return None
 
 def browse_folder(title="Select folder"):
-    """Open folder browser dialog on Linux using zenity or kdialog."""
-    import shutil
+    """Open Windows folder browser to select a folder."""
     try:
-        if shutil.which("zenity"):
-            result = subprocess.run(
-                ["zenity", "--file-selection", "--directory", f"--title={title}"],
-                capture_output=True, text=True
-            )
-            return result.stdout.strip() or None
-        elif shutil.which("kdialog"):
-            result = subprocess.run(
-                ["kdialog", "--getexistingdirectory", os.path.expanduser("~"), f"--title={title}"],
-                capture_output=True, text=True
-            )
-            return result.stdout.strip() or None
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.wm_attributes("-topmost", True)
+        path = filedialog.askdirectory(title=title)
+        root.destroy()
+        return path if path else None
     except Exception:
-        pass
-    return None
+        return None
 
 
 def sep(): print(f"{GRIS}{'─'*54}{RESET}")
-def limpiar(): os.system("clear")
+def limpiar(): os.system("cls" if os.name == "nt" else "clear")
 
 
 # ═══════════════════════════════════════════════════════
@@ -344,12 +352,26 @@ def iniciar_descarga(config):
     download_folder = os.path.expanduser(config["folder"])
     script_dir     = os.path.dirname(os.path.abspath(__file__))
     registro_file  = os.path.join(script_dir, ".registry.json")
-    if COOKIES_NAVEGADOR == "auto":
+    # Check if user has set up cookies.txt via the setup menu
+    script_dir  = os.path.dirname(os.path.abspath(__file__))
+    cookies_txt = os.path.join(script_dir, "cookies.txt")
+
+    if config.get("cookies") and os.path.isfile(config["cookies"]):
+        cookies = config["cookies"]
+        p(VERDE, f"  Using cookies.txt: {cookies}")
+    elif os.path.isfile(cookies_txt):
+        cookies = cookies_txt
+        p(VERDE, f"  Using cookies.txt found in script folder")
+    elif COOKIES_NAVEGADOR == "auto":
         cookies = detect_browser()
         if not cookies:
             p(AMARILLO, "  No browser found for cookies — downloads may be blocked by YouTube.")
-            p(AMARILLO, "  Set COOKIES_NAVEGADOR in the script to your browser name.")
+            p(AMARILLO, "  Use option 'Setup YouTube cookies' in the menu.")
             cookies = None
+        elif os.name == "nt" and cookies in ("brave", "chrome", "chromium", "edge"):
+            p(AMARILLO, f"  Detected {cookies} (Chromium-based).")
+            p(AMARILLO, "  If downloads fail, use 'Setup YouTube cookies' in the menu.")
+            p(VERDE,    f"  Trying with {cookies}...")
         else:
             p(VERDE, f"  Auto-detected browser: {cookies}")
     else:
@@ -805,98 +827,142 @@ def check_duplicates(config):
             else:
                 p(GRIS, "  Nothing deleted.")
             input(f"\n  {GRIS}Press Enter to continue...{RESET}")
-# ═══════════════════════════════════════════════════════
-#  RETRY FAILURES
-# ═══════════════════════════════════════════════════════
 
-def retry_failures(config):
+
+def setup_cookies_windows(config):
+    import webbrowser
+    import glob
+
     limpiar()
     print(f"\n{NEGRITA}{'='*54}")
-    print(f"  Retry failed songs")
+    print(f"  Setup YouTube Cookies (Windows)")
     print(f"{'='*54}{RESET}\n")
 
-    script_dir    = os.path.dirname(os.path.abspath(__file__))
-    failures_csv  = os.path.join(script_dir, ".failures.csv")
-    registry_file = os.path.join(script_dir, ".registry.json")
-    download_folder = os.path.expanduser(config["folder"])
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    if not os.path.exists(failures_csv):
-        p(AMARILLO, "  No failures file found.")
-        p(GRIS,     f"  Expected at: {failures_csv}")
-        input(f"\n  {GRIS}Press Enter to go back...{RESET}")
-        return
+    # Check if cookies.txt already exists
+    existing = os.path.join(script_dir, "cookies.txt")
+    if os.path.isfile(existing):
+        p(VERDE, f"  cookies.txt already found at:")
+        p(GRIS,  f"  {existing}\n")
+        opts = ["Use existing cookies.txt", "Replace with a new one", "Back to menu"]
+        idx = selector(opts, titulo="Cookies already configured")
+        if idx == 0 or idx == 2:
+            return
+        # else continue to setup new one
 
-    failed_songs = []
-    with open(failures_csv, newline="", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        next(reader, None)
-        for row in reader:
-            if len(row) >= 2:
-                song = row[1].strip()
-                if " - " in song:
-                    parts = song.split(" - ", 1)
-                    failed_songs.append((parts[1].strip(), parts[0].strip()))
-                else:
-                    failed_songs.append((song, ""))
+    print(f"  {AMARILLO}Chrome-based browsers (Brave, Chrome, Edge) on Windows")
+    print(f"  encrypt cookies with DPAPI. To bypass this, you need to")
+    print(f"  export cookies manually using a browser extension.{RESET}\n")
 
-    if not failed_songs:
-        p(AMARILLO, "  No failed songs found.")
-        input(f"\n  {GRIS}Press Enter to go back...{RESET}")
-        return
+    steps = [
+        "STEP 1 — Install the extension",
+        "STEP 2 — Export cookies from YouTube",
+        "STEP 3 — Save cookies.txt to the script folder",
+        "Back to menu",
+    ]
 
-    p(CYAN,  f"  {len(failed_songs)} failed song(s) found")
-    p(GRIS,  f"  From: {failures_csv}\n")
-    sep()
+    while True:
+        limpiar()
+        print(f"\n{NEGRITA}{'='*54}")
+        print(f"  Setup YouTube Cookies")
+        print(f"{'='*54}{RESET}\n")
 
-    cookies = COOKIES_NAVEGADOR
-    if cookies == "auto":
-        cookies = detect_browser()
-
-    os.makedirs(download_folder, exist_ok=True)
-    registro  = cargar_registro(registry_file)
-    ok_list   = []
-    still_failing = []
-
-    for i, (nombre, artista) in enumerate(failed_songs, 1):
-        texto   = f"{artista} - {nombre}" if artista else nombre
-        display = (texto[:55] + "...") if len(texto) > 55 else texto
-        print(f"  [{i:>3}/{len(failed_songs)}] {display}", end=" ", flush=True)
-
-        exito, msg = descargar(nombre, artista, download_folder, cookies)
-
-        if exito:
-            p(VERDE, "OK")
-            ok_list.append(texto)
-            registro[clave(nombre, artista)] = {
-                "nombre": nombre, "artista": artista,
-                "fecha": time.strftime("%Y-%m-%d %H:%M"),
-            }
-            guardar_registro(registro, registry_file)
+        # Check current status
+        if os.path.isfile(existing):
+            p(VERDE, f"  Status: cookies.txt found ✓\n")
         else:
-            p(ROJO, "FAILED")
-            print(f"         {GRIS}{msg}{RESET}")
-            still_failing.append((texto, msg))
+            p(AMARILLO, f"  Status: cookies.txt not found\n")
 
-        if i < len(failed_songs):
-            time.sleep(ESPERA_ENTRE_SONGS)
+        idx = selector(steps, titulo="Cookie Setup Guide")
 
-    sep()
-    p(NEGRITA + VERDE, f"  Downloaded : {len(ok_list)}")
-    p(ROJO if still_failing else VERDE, f"  Still failing: {len(still_failing)}")
+        if idx == 3:  # Back
+            return
 
-    if still_failing:
-        with open(failures_csv, "w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(["#", "Song", "Error", "Date"])
-            for i, (nom, mot) in enumerate(still_failing, 1):
-                writer.writerow([i, nom, mot.strip(), time.strftime("%Y-%m-%d %H:%M")])
-        p(AMARILLO, f"\n  Updated: {failures_csv}")
-    else:
-        os.remove(failures_csv)
-        p(VERDE, "\n  All songs downloaded! Failures file removed.")
+        elif idx == 0:  # Install extension
+            limpiar()
+            print(f"\n{NEGRITA}  STEP 1 — Install the extension{RESET}\n")
+            p(CYAN, "  Opening the extension page in your browser...")
+            p(GRIS,  "  Install 'Get cookies.txt LOCALLY' and pin it to your toolbar.\n")
+            # Try to open in default browser
+            try:
+                # Chrome Web Store
+                webbrowser.open("https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc")
+                p(VERDE, "  Browser opened. Install the extension and come back.")
+            except Exception:
+                p(AMARILLO, "  Could not open browser automatically.")
+                p(CYAN,     "  Search for 'Get cookies.txt LOCALLY' in the Chrome Web Store.")
+            input(f"\n  {GRIS}Press Enter when done...{RESET}")
 
-    input(f"\n  {GRIS}Press Enter to go back...{RESET}")
+        elif idx == 1:  # Export cookies
+            limpiar()
+            print(f"\n{NEGRITA}  STEP 2 — Export cookies from YouTube{RESET}\n")
+            p(CYAN, "  Opening YouTube...")
+            try:
+                webbrowser.open("https://www.youtube.com")
+            except Exception:
+                pass
+            print()
+            p(AMARILLO, "  Instructions:")
+            p(RESET,    "  1. Make sure you are logged in to YouTube")
+            p(RESET,    "  2. Click the 'Get cookies.txt LOCALLY' extension icon")
+            p(RESET,    "  3. Click 'Export' or the download button")
+            p(RESET,    "  4. Save the file — name it exactly: cookies.txt")
+            p(RESET, f"  5. Move it to this folder:\n     {script_dir}")
+            input(f"\n  {GRIS}Press Enter when done...{RESET}")
 
+        elif idx == 2:  # Check/save
+            limpiar()
+            print(f"\n{NEGRITA}  STEP 3 — Save cookies.txt{RESET}\n")
+            p(CYAN, f"  Checking for cookies.txt in:\n  {script_dir}\n")
+
+            # Search for cookies.txt in common locations
+            search_paths = [
+                os.path.join(script_dir, "cookies.txt"),
+                os.path.join(os.path.expanduser("~"), "Downloads", "cookies.txt"),
+                os.path.join(os.path.expanduser("~"), "Desktop", "cookies.txt"),
+            ]
+
+            found_path = None
+            for path in search_paths:
+                if os.path.isfile(path):
+                    found_path = path
+                    break
+
+            if found_path and found_path != existing:
+                p(VERDE, f"  Found: {found_path}")
+                p(CYAN,  "  Moving to script folder...")
+                import shutil
+                shutil.copy2(found_path, existing)
+                p(VERDE, f"  Saved to: {existing}")
+
+            elif os.path.isfile(existing):
+                p(VERDE, f"  cookies.txt is already in the right place!")
+
+            else:
+                p(ROJO, "  cookies.txt not found in:")
+                for path in search_paths:
+                    p(GRIS, f"    {path}")
+                p(AMARILLO, "\n  Make sure you saved it as 'cookies.txt' and try again.")
+                input(f"\n  {GRIS}Press Enter to continue...{RESET}")
+                continue
+
+            # Update config to use cookies.txt
+            # Update the global setting
+            p(VERDE, "\n  Updating config to use cookies.txt...")
+
+            # Write a local config override
+            config["cookies"] = existing
+            guardar_config(config)
+
+            p(VERDE, "  Done! The script will now use cookies.txt for downloads.")
+            p(GRIS,  "  You can re-run this setup anytime to update the cookies.")
+            input(f"\n  {GRIS}Press Enter to go back...{RESET}")
+            return
+
+# ═══════════════════════════════════════════════════════
+#  MENU
+# ═══════════════════════════════════════════════════════
 
 def cabecera_menu(config):
     limpiar()
@@ -917,28 +983,15 @@ def menu_change_csv(config):
     p(CYAN, "  Opening file browser...")
     time.sleep(0.5)
 
-    nueva = browse_file(title="Select your Spotify CSV file")
+    nueva = browse_file(title="Select your Spotify CSV file",
+                        filetypes=(("CSV files", "*.csv"), ("All files", "*.*")))
 
     if not nueva:
-        # Fallback to manual input
-        limpiar()
-        print(f"\n{NEGRITA}  Change CSV path{RESET}\n")
-        p(GRIS, f"  Current path: {config['csv']}")
-        print()
-        p(AMARILLO, "  No file browser found. Enter path manually:")
-        p(GRIS, "  (leave blank to cancel)")
-        print()
-        nueva = input("  > ").strip()
-        if not nueva:
-            return
-        nueva = os.path.expanduser(nueva)
-
-    if not os.path.exists(nueva):
-        p(ROJO, f"\n  File not found: {nueva}")
-        p(AMARILLO, "  Check the path and try again.")
-        time.sleep(2)
+        p(AMARILLO, "\n  No file selected.")
+        time.sleep(1.5)
         return
 
+    nueva = nueva.replace("/", os.sep)
     config["csv"] = nueva
     guardar_config(config)
     limpiar()
@@ -957,24 +1010,16 @@ def menu_change_folder(config):
     nueva = browse_folder(title="Select download folder for MP3 files")
 
     if not nueva:
-        # Fallback to manual input
-        limpiar()
-        print(f"\n{NEGRITA}  Change download folder{RESET}\n")
-        p(GRIS, f"  Current path: {os.path.abspath(os.path.expanduser(config['folder']))}")
-        print()
-        p(AMARILLO, "  No file browser found. Enter path manually:")
-        p(GRIS, "  (leave blank to cancel)")
-        print()
-        nueva = input("  > ").strip()
-        if not nueva:
-            return
-        nueva = os.path.expanduser(nueva)
+        p(AMARILLO, "\n  No folder selected.")
+        time.sleep(1.5)
+        return
 
+    nueva = nueva.replace("/", os.sep)
     config["folder"] = nueva
     guardar_config(config)
     limpiar()
     p(VERDE, f"\n  Folder updated:")
-    p(GRIS,  f"  {os.path.abspath(nueva)}")
+    p(GRIS,  f"  {nueva}")
     time.sleep(2)
 
 def selector(opciones, titulo="", subtitulo=""):
@@ -1015,7 +1060,7 @@ def selector(opciones, titulo="", subtitulo=""):
         curses.curs_set(0)
         curses.init_pair(1, curses.COLOR_GREEN,  curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_CYAN,   curses.COLOR_BLACK)
-        curses.init_pair(3, curses.COLOR_BLACK,  curses.COLOR_GREEN)
+        curses.init_pair(3, curses.COLOR_WHITE,  curses.COLOR_GREEN)
         curses.init_pair(4, curses.COLOR_WHITE,  curses.COLOR_BLACK)
         curses.init_pair(5, curses.COLOR_YELLOW, curses.COLOR_BLACK)
 
@@ -1101,7 +1146,7 @@ def selector_multi(opciones, titulo="", subtitulo=""):
         curses.curs_set(0)
         curses.init_pair(1, curses.COLOR_GREEN,  curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_CYAN,   curses.COLOR_BLACK)
-        curses.init_pair(3, curses.COLOR_BLACK,  curses.COLOR_GREEN)
+        curses.init_pair(3, curses.COLOR_WHITE,  curses.COLOR_GREEN)
         curses.init_pair(4, curses.COLOR_WHITE,  curses.COLOR_BLACK)
         curses.init_pair(5, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         curses.init_pair(6, curses.COLOR_RED,    curses.COLOR_BLACK)
@@ -1168,12 +1213,13 @@ def menu_principal():
     config = cargar_config()
 
     opciones = [
-        ("Start download",         lambda: iniciar_descarga(config)),
-        ("Retry failed songs",     lambda: retry_failures(config)),
-        ("Change CSV path",        lambda: menu_change_csv(config)),
-        ("Change download folder", lambda: menu_change_folder(config)),
-        ("Check for duplicates",   lambda: check_duplicates(config)),
-        ("Exit",                   None),
+        ("Start download",              lambda: iniciar_descarga(config)),
+        ("Retry failed songs",          lambda: retry_failures(config)),
+        ("Change CSV path",             lambda: menu_change_csv(config)),
+        ("Change download folder",      lambda: menu_change_folder(config)),
+        ("Check for duplicates",        lambda: check_duplicates(config)),
+        ("Setup YouTube cookies",       lambda: setup_cookies_windows(config)),
+        ("Exit",                        None),
     ]
 
     while True:
@@ -1203,3 +1249,104 @@ if __name__ == "__main__":
         limpiar()
         p(VERDE, "\n  Goodbye!\n")
         sys.exit(0)
+
+
+def retry_failures(config):
+    limpiar()
+    print(f"\n{NEGRITA}{'='*54}")
+    print(f"  Retry failed songs")
+    print(f"{'='*54}{RESET}\n")
+
+    script_dir    = os.path.dirname(os.path.abspath(__file__))
+    failures_csv  = os.path.join(script_dir, ".failures.csv")
+    registry_file = os.path.join(script_dir, ".registry.json")
+    download_folder = os.path.expanduser(config["folder"])
+
+    if not os.path.exists(failures_csv):
+        p(AMARILLO, "  No failures file found.")
+        p(GRIS,     f"  Expected at: {failures_csv}")
+        input(f"\n  {GRIS}Press Enter to go back...{RESET}")
+        return
+
+    # Read failures CSV
+    failed_songs = []
+    with open(failures_csv, newline="", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader, None)  # skip header
+        for row in reader:
+            if len(row) >= 2:
+                song = row[1].strip()
+                if " - " in song:
+                    parts = song.split(" - ", 1)
+                    failed_songs.append((parts[1].strip(), parts[0].strip()))
+                else:
+                    failed_songs.append((song, ""))
+
+    if not failed_songs:
+        p(AMARILLO, "  No failed songs found.")
+        input(f"\n  {GRIS}Press Enter to go back...{RESET}")
+        return
+
+    p(CYAN,  f"  {len(failed_songs)} failed song(s) found")
+    p(GRIS,  f"  From: {failures_csv}\n")
+    sep()
+
+    # Detect cookies
+    if config.get("cookies") and os.path.isfile(config["cookies"]):
+        cookies = config["cookies"]
+    else:
+        cookies_txt = os.path.join(script_dir, "cookies.txt")
+        if os.path.isfile(cookies_txt):
+            cookies = cookies_txt
+        elif COOKIES_NAVEGADOR == "auto":
+            cookies = detect_browser()
+        else:
+            cookies = COOKIES_NAVEGADOR
+
+    os.makedirs(download_folder, exist_ok=True)
+    registro  = cargar_registro(registry_file)
+    ok_list   = []
+    still_failing = []
+
+    for i, (nombre, artista) in enumerate(failed_songs, 1):
+        texto   = f"{artista} - {nombre}" if artista else nombre
+        display = (texto[:55] + "...") if len(texto) > 55 else texto
+        print(f"  [{i:>3}/{len(failed_songs)}] {display}", end=" ", flush=True)
+
+        exito, msg = descargar(nombre, artista, download_folder, cookies)
+
+        if exito:
+            p(VERDE, "OK")
+            ok_list.append(texto)
+            registro[clave(nombre, artista)] = {
+                "nombre":  nombre,
+                "artista": artista,
+                "fecha":   time.strftime("%Y-%m-%d %H:%M"),
+            }
+            guardar_registro(registro, registry_file)
+        else:
+            p(ROJO, "FAILED")
+            print(f"         {GRIS}{msg}{RESET}")
+            still_failing.append((texto, msg))
+
+        if i < len(failed_songs):
+            time.sleep(ESPERA_ENTRE_SONGS)
+
+    sep()
+    p(NEGRITA + VERDE, f"  Downloaded : {len(ok_list)}")
+    p(ROJO if still_failing else VERDE, f"  Still failing: {len(still_failing)}")
+
+    if still_failing:
+        with open(failures_csv, "w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["#", "Song", "Error", "Date"])
+            for i, (nom, mot) in enumerate(still_failing, 1):
+                writer.writerow([i, nom, mot.strip(), time.strftime("%Y-%m-%d %H:%M")])
+        p(AMARILLO, f"\n  Updated: {failures_csv}")
+    else:
+        os.remove(failures_csv)
+        p(VERDE, "\n  All songs downloaded! Failures file removed.")
+
+    input(f"\n  {GRIS}Press Enter to go back...{RESET}")
+
+

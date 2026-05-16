@@ -1,12 +1,11 @@
 @echo off
 setlocal EnableDelayedExpansion
-chcp 65001 >nul
 title spotify-to-mp3
 
 echo.
-echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-echo   🎵  spotify-to-mp3
-echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+echo ==================================================
+echo   spotify-to-mp3
+echo ==================================================
 echo.
 echo   Checking dependencies...
 echo.
@@ -27,11 +26,11 @@ python --version >nul 2>&1
 if errorlevel 1 (
     echo   [+] Installing Python...
     winget install -e --id Python.Python.3.12 --silent --accept-source-agreements --accept-package-agreements
-    :: Refresh PATH
     call :refresh_path
     python --version >nul 2>&1
     if errorlevel 1 (
-        echo   [!] Python install failed. Please install it manually from https://python.org
+        echo   [!] Python install failed.
+        echo   Please install it manually from https://python.org
         pause
         exit /b 1
     )
@@ -48,7 +47,8 @@ if errorlevel 1 (
     call :refresh_path
     ffmpeg -version >nul 2>&1
     if errorlevel 1 (
-        echo   [!] ffmpeg install failed. Please install it manually from https://ffmpeg.org
+        echo   [!] ffmpeg install failed.
+        echo   Please install it manually from https://ffmpeg.org
         pause
         exit /b 1
     )
@@ -65,7 +65,8 @@ if errorlevel 1 (
     call :refresh_path
     node --version >nul 2>&1
     if errorlevel 1 (
-        echo   [!] Node.js install failed. Please install it manually from https://nodejs.org
+        echo   [!] Node.js install failed.
+        echo   Please install it manually from https://nodejs.org
         pause
         exit /b 1
     )
@@ -78,20 +79,18 @@ if errorlevel 1 (
 yt-dlp --version >nul 2>&1
 if errorlevel 1 (
     echo   [+] Installing yt-dlp...
-    :: Try winget first
     winget install -e --id yt-dlp.yt-dlp --silent --accept-source-agreements --accept-package-agreements >nul 2>&1
     call :refresh_path
     yt-dlp --version >nul 2>&1
     if errorlevel 1 (
-        :: Fallback: install via pip
         echo   [+] Trying pip install...
         python -m pip install yt-dlp --quiet
         call :refresh_path
     )
     yt-dlp --version >nul 2>&1
     if errorlevel 1 (
-        echo   [!] yt-dlp install failed. Please install it manually:
-        echo       pip install yt-dlp
+        echo   [!] yt-dlp install failed.
+        echo   Please run: pip install yt-dlp
         pause
         exit /b 1
     )
@@ -100,16 +99,25 @@ if errorlevel 1 (
     echo   [OK] yt-dlp ready
 )
 
+:: ── windows-curses (needed for arrow key menu) ──────────
+python -c "import curses" >nul 2>&1
+if errorlevel 1 (
+    echo   [+] Installing windows-curses...
+    python -m pip install windows-curses --quiet
+    echo   [OK] windows-curses installed
+) else (
+    echo   [OK] windows-curses ready
+)
+
 :: ── All good, run the bot ─────────────────────────────────
 echo.
 echo   [OK] All dependencies ready
 echo.
-echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+echo ==================================================
 echo.
 
-:: Get script directory
 set SCRIPT_DIR=%~dp0
-python "%SCRIPT_DIR%spotify-to-mp3.py"
+python "%SCRIPT_DIR%spotify-to-mp3-windows.py"
 
 if errorlevel 1 (
     echo.
